@@ -5,4 +5,6 @@ the windows libportmidi.dll is provided, no virtual port for windows but this is
 
 for another platform you have to install libportmidi.
 
-Work in progress
+Work in progress, this is inspired by https://github.com/PortMidi/pm_cl but I use the more conventional lisp names convention.
+
+I prefere write-short vs WriteShort 
