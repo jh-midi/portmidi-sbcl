@@ -1,4 +1,4 @@
-native sbcl FFI interface to Portmidi 2.0 with virtual ports on linux and osx
+native sbcl lisp FFI interface to Portmidi 2.0 with virtual ports on linux and osx
 no need of externals asdf libraries 
 
 the windows libportmidi.dll is provided, no virtual port for windows but this is the last version of portmidi precompiled. 
