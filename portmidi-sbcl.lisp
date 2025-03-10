@@ -30,14 +30,16 @@
   (let ((type #+(or darwin macos macosx) "dylib"
               #+(or linux linux-target (and unix pc386) freebsd) "so"
               #+(or win32 microsoft-32 cygwin) "dll")
+	(name #+(or darwin macos macosx  linux linux-target (and unix pc386) freebsd) "libportmidi"
+              #+(or win32 microsoft-32 cygwin) "portmidi")
         (paths (list "/usr/lib/" "/usr/local/lib/" *load-pathname*)))
     (loop for d in paths
-       for p = (make-pathname :name "libportmidi" :type type 
+       for p = (make-pathname :name name :type type 
                               :defaults d)
        when (probe-file p) do (return p)
        finally  
-         (error "Library \"portmidi.~A\" not found. Fix *libportmidi*."
-                type))))
+         (error "Library \"~A.~A\" not found. Fix *lib portmidi*."
+                name type))))
 
 (sb-alien:load-shared-object *libportmidi*)
 
@@ -74,25 +76,31 @@
   (logior (ash data2 16) (ash data1 8) status))
 
 
+(declaim (inline message-type))
+(defun message-type (msg)
+  "8 #b1000 note off 9 #b1001 note on etc..."
+  (declare (type integer msg))
+   (ldb (byte 4 4) msg))
+
 (declaim (inline message-status))
 (defun message-status (msg)
-  (declare (type (unsigned-byte 24) msg))
+  (declare (type integer msg))
   (logand msg #xFF))
 
 (declaim (inline message-data1))
 (defun message-data1 (msg)
-  (declare (type (unsigned-byte 24) msg))
+  (declare (type integer msg))
   (ldb (byte 8 8) msg))
 
 (declaim (inline message-data2))
 (defun message-data2 (msg)
-  (declare (type (unsigned-byte 24) msg))
+  (declare (type integer msg))
   (ldb (byte 8 16) msg))
 
 (declaim (inline decode-message))
 (defun decode-message (msg)
   "Decode a MIDI message encoded into four bytes."
-  (declare (type (unsigned-byte 24) msg))
+  (declare (type integer msg))
   (let ((ash-8 (ldb (byte 16 8) msg)))
     (values (ldb (byte 8 0) msg)       ; status
             (ldb (byte 8 0) ash-8)     ; data1
@@ -100,7 +108,7 @@
 
 (declaim (inline decode-channel-message))
 (defun decode-channel-message (msg)
-  (declare (type (unsigned-byte 24) msg))
+  (declare (type integer msg))
   (let* ((ash-4 (ldb (byte 20 4) msg))
          (ash-8 (ldb (byte 16 4) ash-4)))
     (values (ldb (byte 4 0) ash-4)     ; type
@@ -110,7 +118,6 @@
 
 (declaim (inline before))
 (defun before (t1 t2)
-  (declare (type (unsigned-byte 32) t1 t2))
   (< t1 t2))
 
 (declaim (inline channel))
