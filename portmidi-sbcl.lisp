@@ -30,16 +30,14 @@
   (let ((type #+(or darwin macos macosx) "dylib"
               #+(or linux linux-target (and unix pc386) freebsd) "so"
               #+(or win32 microsoft-32 cygwin) "dll")
-	(name #+(or darwin macos macosx  linux linux-target (and unix pc386) freebsd) "libportmidi"
-              #+(or win32 microsoft-32 cygwin) "portmidi")
-        (paths (list "/usr/lib/" "/usr/local/lib/" *load-pathname*)))
+        (paths (list "/usr/lib/" "/usr/lib/x86_64-linux-gnu/" "/usr/local/lib64/" "/usr/local/lib/" *load-pathname*)))
     (loop for d in paths
-       for p = (make-pathname :name name :type type 
+       for p = (make-pathname :name "libportmidi" :type type 
                               :defaults d)
        when (probe-file p) do (return p)
        finally  
-         (error "Library \"~A.~A\" not found. Fix *lib portmidi*."
-                name type))))
+         (error "Library \"libportmidi.~A\" not found. Fix *libportmidi*."
+                type))))
 
 (sb-alien:load-shared-object *libportmidi*)
 
@@ -64,8 +62,8 @@
     (:mtc 2) 
     (:song-position 4) 
     (:song-select 8)
-    (:tune 64) 
-    (:systemcommon 78)))
+    (:tune 64))) 
+
 
 ;; (defparameter on (message #b10010000 60 64))
 ;; (defparameter off (message #b10000000 60 64))
@@ -118,6 +116,7 @@
 
 (declaim (inline before))
 (defun before (t1 t2)
+  (declare (type integer t1 t2))
   (< t1 t2))
 
 (declaim (inline channel))
@@ -134,7 +133,8 @@
 		 (name c-string) 
 		 (input int) 
 		 (output int) 
-		 (opened int)))
+	     (opened int)
+	     (is_virtual int)))
 
 (define-alien-type pm-error int)
 (define-alien-type pm-message long)
@@ -149,6 +149,13 @@
 (define-alien-type pm-error int)
 (define-alien-type pm-message long)
 (define-alien-type pm-timestamp long)
+
+#|
+define-alien-routine return name with - and lower case
+(define-alien-routine "Pt_Started" int )
+=> PT-STARTED
+
+|#
 
 (define-alien-routine "Pt_Started" int )
 (defun started () (pt-started))
@@ -222,11 +229,16 @@
   (latency long)) 
 
 ;;; reading writing
+(declaim (inline pm-poll))
 (define-alien-routine "Pm_Poll" pm-error (stream (* t)))
+(declaim (inline pm-read))
 (define-alien-routine "Pm_Read" int (stream (* t)) (buffer (* (struct pm-event))) (length long))
+(declaim (inline pm-write))
 (define-alien-routine "Pm_Write" pm-error (stream (* t)) (buffer (*(struct  pm-event))) (length long))
+(declaim (inline pm-writeshort))
 (define-alien-routine "Pm_WriteShort" pm-error (stream (* t)) (when! pm-timestamp) (msg pm-message))
-(define-alien-routine "Pm_WriteSysEx" pm-error (stream (* t)) (when! pm-timestamp) (msg pm-message))
+
+
 
 
 (defun start (&optional (resolution 1))
@@ -252,8 +264,7 @@
 
 
 (defun delete-virtual-device (device-id)
-   (when (zerop (pt-started)) (start))
-   (let ((err (pm-deleteVirtualDevice device-id)))
+  (let ((err (pm-deleteVirtualDevice device-id)))
      (if (not (minusp err) ) ;; no error
 	 err 
 	 (error  (pm-getErrorText  err)))))
@@ -262,7 +273,7 @@
 ;; (defparameter midin (open-input inid 256))
 (defun open-input  (device-id bufsiz)
   (when (zerop (pt-started)) (start))
-  (let ((stream (make-alien (* (* t))))) ;; initialize one pointer to pointer -- malloc
+  (let ((stream (make-alien (* (* t))))) ;; initialize one pointer to pointer --  malloc
     (with-alien ((input-driver-info (* t))
 		 (time-proc (* t))
 	         (time-info (* t)))
@@ -274,7 +285,7 @@
 ;; (defparameter midout (open-output 5 100 1000))
 (defun open-output  (device-id bufsiz latency)
   (when (zerop (pt-started)) (start))
-  (let ((stream (make-alien (* (* t))))) ;; initialize one pointer to pointer -- malloc
+  (let ((stream (make-alien (* (* t))))) ;; initialize one pointer to pointer --  malloc
     (with-alien ((output-driver-info (* t))
 		 (time-proc (* t))
 		 (time-info (* t)))
@@ -311,7 +322,7 @@
   (setf (slot (deref buffer index) 'message) new-message)
  (values))
 
-;;  (event-buffer-map (lambda (a b) b (terpri) (print-midi a)) buff4 num)
+;;  (event-buffer-map (lambda (a b) b (terpri) (print-midi a)) buf num)
 (defun event-buffer-map (fn buf end)
   (loop for i below end
      for e = (event-buffer-elt buf i)
@@ -319,6 +330,7 @@
  (values))
 
 ;; (defparameter num (read midin buff4 4))
+(declaim (inline read))
 (defun read (pms *evbuf len) 
   (let ((res (pm-read pms *evbuf len)))
     (if (minusp res)
@@ -339,17 +351,52 @@
         (error (pm-getErrorText  res))
         res)))
 
+(declaim (inline write-short))
 (defun write-short (pms when msg) 
   (let ((res (pm-writeShort pms when msg)))
     (if (minusp res)
         (error (pm-getErrorText  res))
         res)))
 
-(defun write-sysex (pms when sysex-msg)
-   (let ((res (pm-writeSysex pms when sysex-msg)))
-    (if (minusp res)
-        (error (pm-getErrorText  res))
-        res)))
+
+#| (defparameter syx  (string-to-sysex  "F0 00 21
+         50 00 01 00
+ 01 01 01 04 02 F7"))
+|#
+(defun string-to-sysex (hex-string)
+  "allow multiple space and newline between hexa string "
+  (let* ((taille (length hex-string))
+	 (next1 0)
+	 (to-hex (loop while (<= next1 (- taille 1))
+		       collect
+		       (multiple-value-bind (hex next)
+			   (read-from-string hex-string t nil :start next1)
+			 (setf next1 next)
+			 (read-from-string (format nil "#x~d" hex ))))))
+    (make-array (length to-hex)
+		:element-type '(unsigned-byte 8)
+		:initial-contents to-hex)))
+
+(declaim (inline pm-writesysex))
+(define-alien-routine "Pm_WriteSysEx" pm-error
+  (stream (* t))
+  (when! pm-timestamp)
+  (sysex  (* (SB-ALIEN:UNSIGNED 8))))
+
+;; can be optimized ???
+(declaim (inline write-sysex))
+(defun write-sysex (pms when! sysex-unsigned)
+  " (write-sysex out_stream_pointer 0 #(#xF0 #x07 #xF7)) "
+  (let* ((len (length sysex-unsigned))
+	(sysex-alien (make-alien (unsigned 8) len)))
+    (do ((byt 0 (1+ byt))) 
+	((>= byt len) 
+	 (prog1  (pm-writeSysEx pms when! sysex-alien)
+	   (free-alien sysex-alien))) ;;return on ready end condition
+	(setf (deref sysex-alien byt) (aref sysex-unsigned byt)))) ;fill alien until condition
+    )
+
+ 	       
   
 (defun get-device-info (&optional id)
   "return a list of property list"
@@ -360,7 +407,8 @@
 		 (list :id id
                        :name  (slot d 'name )
                        :type (if (zerop (slot d 'input )) ':output ':input )
-                       :open (slot d 'opened ))))))
+                       :open (slot d 'opened )
+		       :virtual (if (zerop (slot d 'is_virtual )) ':NO ':YES ))))))
     (if id (getone id)
         (loop for i below (pm-CountDevices)
               collect (getone i)))))
@@ -388,9 +436,6 @@
 	 (main-filter (apply #'logior list-all)))
     (pm-setfilter stm main-filter)
        ))
-
-
-
 
 
 
