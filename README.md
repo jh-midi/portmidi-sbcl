@@ -9,4 +9,6 @@ Work in progress, this is inspired by https://github.com/PortMidi/pm_cl but I us
 
 I prefere write-short vs WriteShort 
 
-This is not intensively tested
+This is not intensively tested but I hope all is implemented
+
+
